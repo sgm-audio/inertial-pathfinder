@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Use BuildKit for faster builds and caching
+      cache_from:
+        - type=registry,ref=sonic-mind-forge:latest
+    container_name: sonic-mind-forge
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONOPTIMIZE: 2
+      PORT: 8080
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-sonic-mind-forge-uploads}
+      GCS_REPORTS_BUCKET: ${GCS_REPORTS_BUCKET:-sonic-mind-forge-reports}
+      TARGET_LUFS_MIN: ${TARGET_LUFS_MIN:--14.0}
+      TARGET_LUFS_MAX: ${TARGET_LUFS_MAX:--9.0}
+      TARGET_PHASE_CORRELATION_MIN: ${TARGET_PHASE_CORRELATION_MIN:-0.5}
+      API_KEY: ${API_KEY:-}
+    env_file: .env
+    volumes:
+      # Development: hot reload (only if DEBUG=true)
+      - ./src:/app/src:ro
+      # Shared storage
+      - uploads:/app/uploads
+      - reports:/app/reports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), timeout=5).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - sonic-network
+    # Performance: disable unused features
+    ipc: private
+    labels:
+      com.example.description: "Sonic Mind Forge - AI Audio Analysis API"
+
+volumes:
+  uploads:
+    driver: local
+  reports:
+    driver: local
+
+networks:
+  sonic-network:
+    driver: bridge
+    driver_opts:
+      # Optimization: reduce bridge overhead
+      com.docker.network.bridge.enable_ip_masquerade: "true"

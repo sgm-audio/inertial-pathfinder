@@ -1,0 +1,325 @@
+{
+    "name": "Gatekeeper - Sales & Access Control",
+    "nodes": [
+        {
+            "parameters": {
+                "events": [
+                    "payment_intent.succeeded"
+                ],
+                "options": {}
+            },
+            "id": "stripe-trigger",
+            "name": "Stripe Payment",
+            "type": "n8n-nodes-base.stripeTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "stripe-webhook",
+            "credentials": {
+                "stripeApi": {
+                    "id": "stripe-credentials",
+                    "name": "Stripe API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// Split funds: 30% to Tax Vault, 70% to Operating\nconst amount = $input.first().json.data.object.amount / 100; // Convert from cents\nconst currency = $input.first().json.data.object.currency;\nconst customerEmail = $input.first().json.data.object.receipt_email;\nconst customerId = $input.first().json.data.object.customer;\n\nconst taxAmount = Math.round(amount * 0.30 * 100) / 100;\nconst operatingAmount = Math.round(amount * 0.70 * 100) / 100;\n\n// Generate unique upload token for AI Grader\nconst uploadToken = require('crypto').randomBytes(32).toString('hex');\n\nreturn {\n  amount,\n  currency,\n  customerEmail,\n  customerId,\n  taxAmount,\n  operatingAmount,\n  uploadToken,\n  timestamp: new Date().toISOString()\n};"
+            },
+            "id": "split-funds",
+            "name": "Calculate Split",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.mercury.com/api/v1/transactions",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "amount",
+                            "value": "={{ $json.taxAmount }}"
+                        },
+                        {
+                            "name": "accountId",
+                            "value": "={{ $env.TAX_VAULT_ACCOUNT }}"
+                        },
+                        {
+                            "name": "description",
+                            "value": "Tax Reserve - 30% of ${{ $json.amount }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "tax-transfer",
+            "name": "Transfer to Tax Vault",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                650,
+                200
+            ],
+            "credentials": {
+                "httpHeaderAuth": {
+                    "id": "mercury-api",
+                    "name": "Mercury API"
+                }
+            },
+            "notes": "Transfer 30% to tax reserve account"
+        },
+        {
+            "parameters": {
+                "resource": "user",
+                "operation": "getAll",
+                "filters": {
+                    "email": "={{ $json.customerEmail }}"
+                }
+            },
+            "id": "find-teachable-user",
+            "name": "Find Teachable User",
+            "type": "n8n-nodes-base.teachable",
+            "typeVersion": 1,
+            "position": [
+                650,
+                400
+            ],
+            "credentials": {
+                "teachableApi": {
+                    "id": "teachable-api",
+                    "name": "Teachable API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "resource": "enrollment",
+                "operation": "create",
+                "userId": "={{ $node['Find Teachable User'].json.id }}",
+                "courseId": "={{ $env.COURSE_ID }}"
+            },
+            "id": "enroll-student",
+            "name": "Enroll in Course",
+            "type": "n8n-nodes-base.teachable",
+            "typeVersion": 1,
+            "position": [
+                850,
+                400
+            ],
+            "credentials": {
+                "teachableApi": {
+                    "id": "teachable-api",
+                    "name": "Teachable API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "guildId": "={{ $env.DISCORD_GUILD_ID }}",
+                "userId": "={{ $node['Find Discord User'].json.id }}",
+                "roleId": "={{ $env.DISCORD_STUDENT_ROLE }}"
+            },
+            "id": "add-discord-role",
+            "name": "Add Discord Role",
+            "type": "n8n-nodes-base.discord",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                400
+            ],
+            "credentials": {
+                "discordBotApi": {
+                    "id": "discord-bot",
+                    "name": "Discord Bot"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "url": "https://api.your-app.com/tokens",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "email",
+                            "value": "={{ $json.customerEmail }}"
+                        },
+                        {
+                            "name": "token",
+                            "value": "={{ $node['Calculate Split'].json.uploadToken }}"
+                        },
+                        {
+                            "name": "expires",
+                            "value": "={{ $now.plus(365, 'days').toISO() }}"
+                        }
+                    ]
+                }
+            },
+            "id": "create-upload-token",
+            "name": "Generate Upload Token",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "fromEmail": "welcome@sonicmindforge.com",
+                "toEmail": "={{ $node['Calculate Split'].json.customerEmail }}",
+                "subject": "🎉 Welcome to Sonic Mind Forge!",
+                "emailType": "html",
+                "html": "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <div style=\"background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 40px; text-align: center; border-radius: 10px 10px 0 0;\">\n    <h1 style=\"color: white; margin: 0; font-size: 28px;\">Welcome to Sonic Mind Forge! 🎧</h1>\n  </div>\n  \n  <div style=\"background: #ffffff; padding: 30px;\">\n    <p style=\"font-size: 16px; color: #1f2937;\">Your payment of <strong>${{ $node['Calculate Split'].json.amount }}</strong> has been received!</p>\n    \n    <h3 style=\"color: #6366F1;\">🎓 What's Next?</h3>\n    <ol style=\"color: #4b5563;\">\n      <li><strong>Access Your Course:</strong> Log into Teachable to start learning</li>\n      <li><strong>Join Discord:</strong> Connect with the community</li>\n      <li><strong>Submit Your First Mix:</strong> Use your AI Analysis token below</li>\n    </ol>\n    \n    <div style=\"background: #f3f4f6; border-radius: 10px; padding: 20px; margin: 20px 0; text-align: center;\">\n      <p style=\"margin: 0 0 10px; color: #6b7280;\">Your AI Analysis Upload Token:</p>\n      <code style=\"background: #1f2937; color: #10b981; padding: 15px 25px; border-radius: 5px; font-size: 14px; display: inline-block;\">{{ $node['Calculate Split'].json.uploadToken }}</code>\n    </div>\n    \n    <p style=\"color: #4b5563;\">Use this token to submit your mixes for instant AI feedback!</p>\n  </div>\n  \n  <div style=\"background: #1f2937; padding: 20px; text-align: center; border-radius: 0 0 10px 10px;\">\n    <p style=\"color: rgba(255,255,255,0.7); margin: 0; font-size: 12px;\">Questions? Reply to this email anytime.</p>\n  </div>\n</div>"
+            },
+            "id": "welcome-email",
+            "name": "Send Welcome Email",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 2.1,
+            "position": [
+                1450,
+                300
+            ],
+            "credentials": {
+                "smtp": {
+                    "id": "smtp-credentials",
+                    "name": "SMTP"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": "={{ $env.SALES_SHEET_ID }}",
+                "sheetName": "Sales",
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "Date": "={{ $node['Calculate Split'].json.timestamp }}",
+                        "Email": "={{ $node['Calculate Split'].json.customerEmail }}",
+                        "Amount": "={{ $node['Calculate Split'].json.amount }}",
+                        "Tax Reserve": "={{ $node['Calculate Split'].json.taxAmount }}",
+                        "Operating": "={{ $node['Calculate Split'].json.operatingAmount }}",
+                        "Token": "={{ $node['Calculate Split'].json.uploadToken }}"
+                    }
+                }
+            },
+            "id": "log-sale",
+            "name": "Log to Sheets",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.1,
+            "position": [
+                1450,
+                500
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "google-sheets",
+                    "name": "Google Sheets"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Stripe Payment": {
+            "main": [
+                [
+                    {
+                        "node": "Calculate Split",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Calculate Split": {
+            "main": [
+                [
+                    {
+                        "node": "Transfer to Tax Vault",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Find Teachable User",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Find Teachable User": {
+            "main": [
+                [
+                    {
+                        "node": "Enroll in Course",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Enroll in Course": {
+            "main": [
+                [
+                    {
+                        "node": "Add Discord Role",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Add Discord Role": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Upload Token",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Upload Token": {
+            "main": [
+                [
+                    {
+                        "node": "Send Welcome Email",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Log to Sheets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateId": "gatekeeper-sales"
+    },
+    "tags": [
+        {
+            "name": "sales"
+        },
+        {
+            "name": "automation"
+        }
+    ]
+}

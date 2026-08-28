@@ -1,0 +1,347 @@
+{
+    "name": "Content Engine - Automated Shorts Creator",
+    "nodes": [
+        {
+            "parameters": {
+                "events": [
+                    "video.uploaded"
+                ],
+                "channelId": "={{ $env.YOUTUBE_CHANNEL_ID }}"
+            },
+            "id": "youtube-trigger",
+            "name": "New YouTube Video",
+            "type": "n8n-nodes-base.youtubeTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "youtube-webhook",
+            "credentials": {
+                "youTubeOAuth2Api": {
+                    "id": "youtube-api",
+                    "name": "YouTube API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "command": "yt-dlp -f 'bestvideo[height<=1080]+bestaudio/best[height<=1080]' -o '/tmp/{{ $json.videoId }}.%(ext)s' 'https://youtube.com/watch?v={{ $json.videoId }}'",
+                "options": {
+                    "timeout": 600000
+                }
+            },
+            "id": "download-video",
+            "name": "Download Video",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Call local LLM to analyze transcript and find viral moments\nconst videoId = $input.first().json.videoId;\nconst videoTitle = $input.first().json.title;\n\n// In production, call your local LLM API (Llama 3, etc.)\n// This is a placeholder for the API call structure\n\nconst prompt = `You are analyzing a YouTube video for viral short-form content.\n\nVideo Title: ${videoTitle}\n\nAnalyze the transcript and identify 3-5 potential viral moments that would work as TikTok/YouTube Shorts.\n\nFor each moment, provide:\n1. Start timestamp (in seconds)\n2. End timestamp (in seconds) - should be 15-60 seconds\n3. Hook text (the first line that grabs attention)\n4. Why this moment would go viral\n\nFormat your response as JSON array.`;\n\nreturn {\n  videoId,\n  videoTitle,\n  llmPrompt: prompt,\n  videoPath: `/tmp/${videoId}.mp4`\n};"
+            },
+            "id": "prepare-llm",
+            "name": "Prepare LLM Analysis",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://localhost:11434/api/generate",
+                "method": "POST",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "model",
+                            "value": "llama3"
+                        },
+                        {
+                            "name": "prompt",
+                            "value": "={{ $json.llmPrompt }}"
+                        },
+                        {
+                            "name": "stream",
+                            "value": "false"
+                        }
+                    ]
+                },
+                "options": {
+                    "timeout": 120000
+                }
+            },
+            "id": "call-llm",
+            "name": "LLM: Find Viral Moments",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                850,
+                300
+            ],
+            "notes": "Calls local Ollama instance with Llama 3"
+        },
+        {
+            "parameters": {
+                "jsCode": "// Parse LLM response and prepare ffmpeg commands\nconst llmResponse = $input.first().json.response;\nconst videoPath = $node['Prepare LLM Analysis'].json.videoPath;\n\nlet clips;\ntry {\n  // Extract JSON from LLM response\n  const jsonMatch = llmResponse.match(/\\[.*\\]/s);\n  clips = JSON.parse(jsonMatch[0]);\n} catch (e) {\n  // Fallback: create a single clip from the first 30 seconds\n  clips = [{\n    start: 0,\n    end: 30,\n    hook: $node['Prepare LLM Analysis'].json.videoTitle,\n    reason: 'Intro clip'\n  }];\n}\n\nreturn clips.map((clip, index) => ({\n  clipIndex: index + 1,\n  videoPath,\n  startTime: clip.start,\n  endTime: clip.end,\n  duration: clip.end - clip.start,\n  hookText: clip.hook,\n  outputPath: `/tmp/short_${$node['Prepare LLM Analysis'].json.videoId}_${index + 1}.mp4`\n}));"
+            },
+            "id": "parse-clips",
+            "name": "Parse Clip Timestamps",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "batchSize": 1,
+                "options": {}
+            },
+            "id": "split-clips",
+            "name": "Process Each Clip",
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 3,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "command": "ffmpeg -i '{{ $json.videoPath }}' -ss {{ $json.startTime }} -t {{ $json.duration }} -vf \"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1\" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k '{{ $json.outputPath }}'",
+                "options": {
+                    "timeout": 300000
+                }
+            },
+            "id": "create-short",
+            "name": "FFmpeg: Crop to 9:16",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1450,
+                300
+            ],
+            "notes": "Crop and resize video to vertical 9:16 format"
+        },
+        {
+            "parameters": {
+                "command": "ffmpeg -i '{{ $json.outputPath }}' -vf \"drawtext=text='{{ $json.hookText }}':fontsize=48:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=h-100\" -c:a copy '{{ $json.outputPath.replace('.mp4', '_captioned.mp4') }}'",
+                "options": {
+                    "timeout": 180000
+                }
+            },
+            "id": "add-captions",
+            "name": "FFmpeg: Add Captions",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1650,
+                300
+            ],
+            "notes": "Burn hook text as caption"
+        },
+        {
+            "parameters": {
+                "resource": "video",
+                "operation": "upload",
+                "title": "={{ $json.hookText }}",
+                "description": "Full video: https://youtube.com/watch?v={{ $node['New YouTube Video'].json.videoId }}\n\n#shorts #musicproduction #mixing",
+                "privacyStatus": "public",
+                "binaryPropertyName": "data"
+            },
+            "id": "upload-youtube",
+            "name": "Upload to YouTube Shorts",
+            "type": "n8n-nodes-base.youTube",
+            "typeVersion": 1,
+            "position": [
+                1850,
+                200
+            ],
+            "credentials": {
+                "youTubeOAuth2Api": {
+                    "id": "youtube-api",
+                    "name": "YouTube API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "url": "https://open.tiktokapis.com/v2/post/publish/video/init/",
+                "method": "POST",
+                "authentication": "oAuth2",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "source_type",
+                            "value": "PULL_FROM_URL"
+                        }
+                    ]
+                }
+            },
+            "id": "upload-tiktok",
+            "name": "Upload to TikTok",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1850,
+                400
+            ],
+            "credentials": {
+                "oAuth2Api": {
+                    "id": "tiktok-oauth",
+                    "name": "TikTok OAuth"
+                }
+            },
+            "notes": "Requires TikTok Creator API access"
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.DISCORD_CONTENT_CHANNEL }}",
+                "text": "🎬 **New Short Created!**\n\nFrom: {{ $node['New YouTube Video'].json.title }}\nClip #{{ $json.clipIndex }}: {{ $json.hookText }}\n\nUploading to YouTube Shorts and TikTok..."
+            },
+            "id": "notify-discord",
+            "name": "Discord Update",
+            "type": "n8n-nodes-base.discord",
+            "typeVersion": 2,
+            "position": [
+                2050,
+                300
+            ],
+            "credentials": {
+                "discordBotApi": {
+                    "id": "discord-bot",
+                    "name": "Discord Bot"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "New YouTube Video": {
+            "main": [
+                [
+                    {
+                        "node": "Download Video",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Download Video": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare LLM Analysis",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare LLM Analysis": {
+            "main": [
+                [
+                    {
+                        "node": "LLM: Find Viral Moments",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "LLM: Find Viral Moments": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Clip Timestamps",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Clip Timestamps": {
+            "main": [
+                [
+                    {
+                        "node": "Process Each Clip",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Process Each Clip": {
+            "main": [
+                [
+                    {
+                        "node": "FFmpeg: Crop to 9:16",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Discord Update",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "FFmpeg: Crop to 9:16": {
+            "main": [
+                [
+                    {
+                        "node": "FFmpeg: Add Captions",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "FFmpeg: Add Captions": {
+            "main": [
+                [
+                    {
+                        "node": "Upload to YouTube Shorts",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Upload to TikTok",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateId": "content-engine"
+    },
+    "tags": [
+        {
+            "name": "content"
+        },
+        {
+            "name": "automation"
+        },
+        {
+            "name": "llm"
+        }
+    ]
+}

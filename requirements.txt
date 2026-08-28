@@ -1,0 +1,31 @@
+# Core Framework
+fastapi>=0.104.0,<1
+uvicorn[standard]>=0.24.0,<1
+uvloop>=0.19.0; sys_platform != 'win32'  # Linux/Docker only
+python-multipart>=0.0.6
+pydantic>=2.5.0,<3
+pydantic-settings>=2.1.0,<3
+
+# Audio Analysis
+librosa>=0.10.1
+numpy>=1.24.0,<3
+scipy>=1.11.0
+pyloudnorm>=0.1.1
+soundfile>=0.12.1
+
+# PDF Report Generation
+reportlab>=4.0.0
+Pillow>=10.0.0
+
+# Google Cloud
+google-cloud-storage>=2.13.0,<4
+
+# Cloud Storage (AWS S3 / S3-compatible)
+boto3>=1.28.0,<2
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0
+pytest-cov>=4.1.0
+moto>=5.0.0,<6

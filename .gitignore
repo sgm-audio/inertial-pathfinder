@@ -1,0 +1,46 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# Temp files
+uploads/
+reports/
+*.wav
+*.mp3
+*.flac
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log

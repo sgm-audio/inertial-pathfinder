@@ -1,0 +1,240 @@
+{
+    "name": "Sonic Mind Forge - AI Audio Grader",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "audio-upload",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1.1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "audio-upload-webhook"
+        },
+        {
+            "parameters": {
+                "operation": "upload",
+                "bucketName": "={{ $env.GCS_UPLOADS_BUCKET }}",
+                "fileName": "=uploads/{{ $now.format('yyyy-MM-dd') }}/{{ $json.studentId }}_{{ $now.toMillis() }}.wav",
+                "binaryPropertyName": "data",
+                "options": {
+                    "contentType": "audio/wav"
+                }
+            },
+            "id": "gcs-upload",
+            "name": "Upload to GCS",
+            "type": "n8n-nodes-base.googleCloudStorage",
+            "typeVersion": 1,
+            "position": [
+                450,
+                300
+            ],
+            "credentials": {
+                "googleCloudStorageOAuth2Api": {
+                    "id": "gcs-credentials",
+                    "name": "GCS Service Account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.ANALYZER_URL }}/analyze-from-gcs",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "bucket",
+                            "value": "={{ $env.GCS_UPLOADS_BUCKET }}"
+                        },
+                        {
+                            "name": "blob_name",
+                            "value": "={{ $node['Upload to GCS'].json.name }}"
+                        },
+                        {
+                            "name": "generate_report",
+                            "value": "true"
+                        }
+                    ]
+                },
+                "options": {
+                    "timeout": 120000
+                }
+            },
+            "id": "call-analyzer",
+            "name": "Analyze Audio",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                650,
+                300
+            ],
+            "credentials": {
+                "httpHeaderAuth": {
+                    "id": "api-key",
+                    "name": "Sonic Mind Forge API Key"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "boolean": [
+                        {
+                            "value1": "={{ $json.success }}",
+                            "value2": true
+                        }
+                    ]
+                }
+            },
+            "id": "check-success",
+            "name": "Analysis Success?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "fromEmail": "reports@sonicmindforge.com",
+                "toEmail": "={{ $node['Webhook Trigger'].json.studentEmail }}",
+                "subject": "🎧 Your Mix Analysis is Ready!",
+                "emailType": "html",
+                "html": "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">\n  <div style=\"background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;\">\n    <h1 style=\"color: white; margin: 0;\">Sonic Mind Forge</h1>\n    <p style=\"color: rgba(255,255,255,0.9); margin: 10px 0 0;\">AI Audio Analysis Report</p>\n  </div>\n  \n  <div style=\"background: #f8f9fa; padding: 30px;\">\n    <h2 style=\"color: #1f2937;\">Hi {{ $node['Webhook Trigger'].json.studentName }}!</h2>\n    \n    <p>Your mix has been analyzed by our AI engine. Here's your quick summary:</p>\n    \n    <div style=\"background: white; border-radius: 10px; padding: 20px; margin: 20px 0;\">\n      <h3 style=\"color: #6366F1; margin-top: 0;\">📊 Overall Grade: {{ $json.analysis.overall_grade }}</h3>\n      \n      <table style=\"width: 100%; border-collapse: collapse;\">\n        <tr>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\"><strong>LUFS</strong></td>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">{{ $json.analysis.integrated_lufs }} LUFS</td>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">{{ $json.analysis.lufs_grade }}</td>\n        </tr>\n        <tr>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\"><strong>Phase</strong></td>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">{{ $json.analysis.stereo.phase_correlation }}</td>\n          <td style=\"padding: 8px; border-bottom: 1px solid #eee;\">{{ $json.analysis.phase_grade }}</td>\n        </tr>\n        <tr>\n          <td style=\"padding: 8px;\"><strong>Dynamics</strong></td>\n          <td style=\"padding: 8px;\">{{ $json.analysis.dynamics.dynamic_range_db }} dB</td>\n          <td style=\"padding: 8px;\">{{ $json.analysis.spectral_grade }}</td>\n        </tr>\n      </table>\n    </div>\n    \n    <div style=\"text-align: center; margin: 30px 0;\">\n      <a href=\"{{ $json.report_url }}\" style=\"background: #6366F1; color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: bold;\">📄 Download Full PDF Report</a>\n    </div>\n    \n    <h3 style=\"color: #1f2937;\">💡 Recommendations:</h3>\n    <ul style=\"color: #4b5563;\">\n      {{ $json.analysis.recommendations.map(r => '<li>' + r + '</li>').join('') }}\n    </ul>\n  </div>\n  \n  <div style=\"background: #1f2937; padding: 20px; text-align: center; border-radius: 0 0 10px 10px;\">\n    <p style=\"color: rgba(255,255,255,0.7); margin: 0; font-size: 12px;\">Sonic Mind Forge • AI-Powered Audio Analysis</p>\n  </div>\n</div>",
+                "options": {}
+            },
+            "id": "send-email",
+            "name": "Email Report",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 2.1,
+            "position": [
+                1050,
+                200
+            ],
+            "credentials": {
+                "smtp": {
+                    "id": "smtp-credentials",
+                    "name": "SMTP"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "channel": "={{ $env.DISCORD_STUDENT_CHANNEL }}",
+                "text": "🎧 **Analysis Complete!**\n\n{{ $node['Webhook Trigger'].json.studentName }}'s mix has been analyzed.\n\n**Overall Grade:** {{ $json.analysis.overall_grade }}\n**LUFS:** {{ $json.analysis.integrated_lufs }}\n\nReport sent to their email!"
+            },
+            "id": "discord-notify",
+            "name": "Discord Notification",
+            "type": "n8n-nodes-base.discord",
+            "typeVersion": 2,
+            "position": [
+                1050,
+                400
+            ],
+            "credentials": {
+                "discordBotApi": {
+                    "id": "discord-bot",
+                    "name": "Discord Bot"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "errorMessage": "Analysis failed for student {{ $node['Webhook Trigger'].json.studentEmail }}"
+            },
+            "id": "error-handler",
+            "name": "Error Handler",
+            "type": "n8n-nodes-base.stopAndError",
+            "typeVersion": 1,
+            "position": [
+                1050,
+                500
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Upload to GCS",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Upload to GCS": {
+            "main": [
+                [
+                    {
+                        "node": "Analyze Audio",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Analyze Audio": {
+            "main": [
+                [
+                    {
+                        "node": "Analysis Success?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Analysis Success?": {
+            "main": [
+                [
+                    {
+                        "node": "Email Report",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Discord Notification",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Error Handler",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "meta": {
+        "templateId": "sonic-mind-forge-grader"
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "audio-analysis"
+        },
+        {
+            "name": "automation"
+        }
+    ]
+}

@@ -1,0 +1,56 @@
+# Version control
+.git
+.gitignore
+
+# Documentation
+README.md
+DEPLOYMENT.md
+*.md
+
+# Development
+.venv
+venv
+env
+__pycache__
+.pytest_cache
+.coverage
+htmlcov
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+tests
+pytest.ini
+.pytest_cache
+coverage.xml
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# CI/CD
+.github
+.gitlab-ci.yml
+workflows
+
+# OS
+Thumbs.db
+.DS_Store
+*.log
+
+# Other
+node_modules
+.next
+out
