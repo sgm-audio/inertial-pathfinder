@@ -1,7 +1,7 @@
 """
 Sonic Mind Forge - Core Audio Analysis Engine
 
-Professional-grade audio analysis for music production feedback.
+Audio analysis for mix feedback.
 Measures LUFS, phase correlation, spectral balance, dynamic range, and stereo width.
 """
 
