@@ -1,5 +1,7 @@
 # Container Optimization Guide - Sonic Mind Forge
 
+> The 1.94 GB starting size is what the old image was. The other savings and speedups in here are estimates, not benchmarks. I haven't re-measured them.
+
 ## Optimizations Applied
 
 ### 1. **Image Size Reduction (Target: ~1.0GB from 1.94GB)**

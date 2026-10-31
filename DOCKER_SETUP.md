@@ -22,7 +22,6 @@ Your project is now fully containerized with Docker best practices. Here's what'
 - ✓ Optional services commented (Redis, PostgreSQL)
 
 ### 3. **docker-compose.prod.yml** (Production)
-- ✓ Production-ready configuration
 - ✓ No source code volume mounts (security)
 - ✓ Resource limits (CPU, memory)
 - ✓ Always-restart policy
