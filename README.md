@@ -1,20 +1,21 @@
-# 🎧 Sonic Mind Forge
+# Sonic Mind Forge (inertial-pathfinder)
 
-**Zero-Touch AI Audio Analysis Platform**
+An audio analysis API for mix feedback in music lessons. A student uploads a mix and gets back a report with loudness, phase correlation, spectral balance and dynamics numbers, plus rule-based recommendations as JSON and a PDF. There's no AI model in the analysis. It's librosa, pyloudnorm and fixed thresholds.
 
-Automated audio grading for music education. Students upload mixes, receive instant AI-powered analysis reports with LUFS, phase correlation, spectral balance, and professional recommendations.
+## What it measures
 
-## ⚡ Features
+- **Integrated loudness**: pyloudnorm (ITU-R BS.1770-4 K-weighting and gating)
+- **Spectral balance**: energy share in six bands (sub, low, low-mid, mid, high-mid, high)
+- **Phase correlation**: L/R correlation, as a mono-compatibility check
+- **Crest factor**: peak minus RMS in dB
+- **"Dynamic range"**: the 95th minus 10th percentile of 400 ms RMS windows. It's a rough stand-in for loudness range, not EBU R128 LRA (no K-weighting or gating), so don't compare it to LRA from a meter.
+- **PDF report**: built with `report_generator.py`
+- **Storage**: GCS or S3 for uploads and reports
+- **n8n**: example workflows in `workflows/`
 
-- **🔊 LUFS Analysis** - Integrated loudness measurement (ITU-R BS.1770-4)
-- **📊 Spectral Balance** - Frequency band energy distribution
-- **🎚️ Phase Correlation** - Mono compatibility detection
-- **🎛️ Dynamic Range** - Crest factor and LRA analysis
-- **📄 PDF Reports** - Professional branded reports
-- **☁️ GCS Integration** - Cloud-native file handling
-- **🔗 n8n Ready** - Pre-built automation workflows
+Tests: `pytest -q tests` gives 95 passed (Python 3.12, Linux x86_64, Oct 2026).
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Install dependencies
@@ -27,14 +28,15 @@ uvicorn src.main:app --reload --reload-dir src
 open http://localhost:8000/docs
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── src/
 │   ├── main.py              # FastAPI application
 │   ├── audio_analyzer.py    # Core analysis engine
 │   ├── report_generator.py  # PDF generation
-│   └── gcs_handler.py       # GCS integration
+│   ├── gcs_handler.py       # GCS integration
+│   └── s3_handler.py        # S3 integration
 ├── workflows/
 │   ├── ai_grader.json       # n8n: Upload → Analyze → Email
 │   ├── gatekeeper.json      # n8n: Sales automation
@@ -45,7 +47,7 @@ open http://localhost:8000/docs
 └── DEPLOYMENT.md
 ```
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -55,7 +57,7 @@ open http://localhost:8000/docs
 | `/webhook/n8n` | POST | n8n integration webhook |
 | `/report/{name}` | GET | Download PDF report |
 
-## 📊 Analysis Metrics
+## Analysis Metrics
 
 ```json
 {
@@ -78,7 +80,7 @@ open http://localhost:8000/docs
 }
 ```
 
-## 🔧 n8n Workflows
+## n8n Workflows
 
 ### 1. AI Grader (`ai_grader.json`)
 `Webhook → GCS Upload → Analyze → Email Report`
@@ -89,7 +91,7 @@ open http://localhost:8000/docs
 ### 3. Content Engine (`content_engine.json`)
 `YouTube Upload → LLM Analysis → FFmpeg Crop → Social Upload`
 
-## ☁️ Deployment
+## Deployment
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for full GCP setup instructions.
 
@@ -101,14 +103,14 @@ gcloud run deploy sonic-mind-forge \
   --allow-unauthenticated
 ```
 
-## 📈 Cost
+## Cost
 
 Costs vary with cloud provider and usage volume. See [DEPLOYMENT.md](./DEPLOYMENT.md) for cloud resource sizing guidance.
 
-## 📜 License
+## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-Built for [Sonic Mind Forge](https://sonicmindforge.com) • Zero-Touch Music Education
+Built for [Sonic Mind Forge](https://sonicmindforge.com).
